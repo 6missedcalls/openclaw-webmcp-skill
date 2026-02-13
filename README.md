@@ -1,53 +1,83 @@
+<p align="center">
+  <img src="https://img.shields.io/badge/W3C-WebMCP-005A9C?style=for-the-badge&logo=w3c&logoColor=white" alt="W3C WebMCP" />
+  <img src="https://img.shields.io/badge/Chrome-146%2B-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome 146+" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License" />
+  <img src="https://img.shields.io/badge/OpenClaw-Skill-FF6B35?style=for-the-badge" alt="OpenClaw Skill" />
+</p>
+
 # OpenClaw WebMCP Skill
 
-> First-mover integration: OpenClaw + Chrome WebMCP (W3C Standard)
+**Give your AI agents structured tool access to any WebMCP-enabled website.**
 
-Lets OpenClaw agents discover and invoke [WebMCP](https://github.com/webmachinelearning/webmcp) tools exposed by websites via Chrome's `navigator.modelContext` API.
+No more DOM scraping. No more brittle selectors. Just JSON in, JSON out.
 
-**Instead of clicking buttons and scraping DOM, agents call structured tools directly. JSON in, JSON out.**
+---
 
 ## What is WebMCP?
 
-[WebMCP](https://github.com/webmachinelearning/webmcp) is a proposed W3C web standard (Chrome 146+) that enables websites to register callable tools with the browser. AI agents can discover and invoke these tools without UI automation.
+[WebMCP](https://github.com/nicholasgriffintn/webmcp) is a proposed **W3C web standard** (Chrome 146+) that lets websites register callable tools with the browser. AI agents can discover and invoke these tools without any UI automation.
+
+```
+  Traditional Agent                    WebMCP Agent
+  ─────────────────                    ────────────
+  Load page                            Call function
+  Parse DOM                            Get structured JSON
+  Find button                          Done.
+  Click button
+  Read HTML response
+  Parse response
+  Hope nothing changed
+```
+
+## How It Works
+
+Websites register tools via `navigator.modelContext`. This skill lets OpenClaw agents discover and call those tools directly:
 
 ```js
 // Website registers a tool
 navigator.modelContext.registerTool({
-  name: "calculate_roi",
-  description: "Calculate ROI for switching to our platform",
-  inputSchema: { type: "object", properties: { employeeCount: { type: "number" } } },
-  execute: async ({ employeeCount }) => {
-    return { monthlySavings: employeeCount * 43.2, annualROI: employeeCount * 518.4 };
+  name: "get_pricing",
+  description: "Get current pricing tiers",
+  inputSchema: {
+    type: "object",
+    properties: {
+      tier: { type: "string", enum: ["basic", "pro", "enterprise"] }
+    }
+  },
+  execute: async ({ tier }) => {
+    return { tier, monthly: 29, annual: 290, currency: "USD" };
   }
 });
 ```
 
 ```
-// OpenClaw agent invokes it
+// OpenClaw agent invokes it — structured JSON response
 browser action=act request={
   "kind": "evaluate",
-  "fn": "async () => await window.__WEBMCP_TOOLS__.calculate_roi.execute({employeeCount: 50})"
+  "fn": "async () => await window.__WEBMCP_TOOLS__.get_pricing.execute({tier: 'pro'})"
 }
-// → { monthlySavings: 2160, annualROI: 25920 }
+// -> { tier: "pro", monthly: 29, annual: 290, currency: "USD" }
 ```
 
 ## Requirements
 
-- Chrome Canary 146+ with **"WebMCP for testing"** flag enabled (`chrome://flags`)
-- [OpenClaw](https://github.com/openclaw/openclaw) with browser control
-- Target site must implement WebMCP tool registration
+| Requirement | Details |
+|-------------|---------|
+| **Browser** | Chrome Canary 146+ with `chrome://flags` → "WebMCP for testing" enabled |
+| **Agent Framework** | [OpenClaw](https://github.com/anthropics/claude-code) with browser control |
+| **Target Site** | Must implement WebMCP tool registration |
 
-## Installation
+## Quick Start
 
-Copy `SKILL.md` to your OpenClaw skills directory:
+### 1. Install the Skill
 
 ```bash
-cp SKILL.md ~/clawd/skills/webmcp/SKILL.md
+# Copy to your OpenClaw skills directory
+cp skills/SKILL.md ~/.openclaw/skills/webmcp/SKILL.md
 ```
 
-## Usage
+### 2. Check WebMCP Support
 
-### 1. Check WebMCP Support
 ```
 browser action=act profile=chrome request={
   "kind": "evaluate",
@@ -55,59 +85,106 @@ browser action=act profile=chrome request={
 }
 ```
 
-### 2. Discover Tools
+### 3. Discover Available Tools
+
 ```
 browser action=act profile=chrome request={
   "kind": "evaluate",
-  "fn": "() => window.__WEBMCP_TOOLS__ ? Object.keys(window.__WEBMCP_TOOLS__) : 'No tools exposed'"
+  "fn": "() => window.__WEBMCP_TOOLS__
+    ? Object.keys(window.__WEBMCP_TOOLS__)
+    : 'No tools exposed'"
 }
 ```
 
-### 3. Invoke a Tool
+### 4. Invoke a Tool
+
 ```
 browser action=act profile=chrome request={
   "kind": "evaluate",
-  "fn": "async () => await window.__WEBMCP_TOOLS__.get_pricing.execute({tier: 'all', billing: 'annual'})"
+  "fn": "async () => await window.__WEBMCP_TOOLS__.get_pricing.execute({
+    tier: 'pro',
+    billing: 'annual'
+  })"
 }
 ```
 
 ## For Website Developers
 
-To make your site WebMCP-compatible and agent-accessible:
+Make your site agent-accessible in three steps:
 
-1. **Register tools** with `navigator.modelContext.registerTool()` or `provideContext()`
-2. **Expose on window** via `window.__WEBMCP_TOOLS__` for agent discovery
-3. **Follow the W3C spec**: each tool needs `name`, `description`, `inputSchema`, `execute`
+```js
+// 1. Register tools with the WebMCP API
+navigator.modelContext.registerTool({
+  name: "search_products",
+  description: "Search product catalog by keyword",
+  inputSchema: {
+    type: "object",
+    properties: { query: { type: "string" } },
+    required: ["query"]
+  },
+  execute: async ({ query }) => {
+    const results = await fetch(`/api/products?q=${query}`).then(r => r.json());
+    return results;
+  }
+});
 
-See the [W3C WebMCP Explainer](https://github.com/webmachinelearning/webmcp) for the full specification.
+// 2. Expose on window for agent discovery
+window.__WEBMCP_TOOLS__ = window.__WEBMCP_TOOLS__ || {};
+window.__WEBMCP_TOOLS__.search_products = { execute: searchProducts };
 
-## Example: ProForge ERP
+// 3. That's it. Agents can now discover and call your tools.
+```
 
-[getproforge.com](https://getproforge.com) implements 4 WebMCP tools:
-- `request_demo` — Submit demo request with lead info
-- `get_pricing` — Get tier pricing (Foundation/Professional/Enterprise)
-- `check_compliance` — Check Davis-Bacon, prevailing wage, certified payroll features
-- `calculate_roi` — Calculate ROI based on company size and current processes
+Each tool needs: `name`, `description`, `inputSchema`, and `execute`.
 
-## How It Works
+See the [W3C WebMCP Explainer](https://github.com/nicholasgriffintn/webmcp) for the full specification.
+
+## Example: Mock ERP Application
+
+Here's what a WebMCP-enabled business app might expose:
+
+| Tool | Description |
+|------|-------------|
+| `request_demo` | Submit a demo request with contact info |
+| `get_pricing` | Retrieve pricing tiers and billing options |
+| `check_compliance` | Query available compliance and regulatory features |
+| `calculate_roi` | Estimate ROI based on team size and current workflow |
 
 ```
-Before WebMCP:
-Agent → loads page → parses DOM → finds button → clicks → reads HTML response
-
-After WebMCP:  
-Agent → calls function → gets structured JSON
+// Agent discovers and calls tools — no UI automation needed
+browser action=act profile=chrome request={
+  "kind": "evaluate",
+  "fn": "async () => await window.__WEBMCP_TOOLS__.calculate_roi.execute({
+    teamSize: 50
+  })"
+}
+// -> { monthlySavings: 2500, annualROI: 30000 }
 ```
 
-Same difference as scraping a website vs calling its API.
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `WebMCP not available` | Enable "WebMCP for testing" in `chrome://flags`, restart Canary |
+| `No tools found` | Site hasn't registered tools, or they load on a specific route |
+| Tool execution fails | Check the tool's `inputSchema` for required fields |
+| Browser relay not connected | Click the OpenClaw toolbar icon on the target tab |
 
 ## Links
 
-- [W3C WebMCP Spec](https://github.com/webmachinelearning/webmcp)
-- [MCP-B Polyfill](https://github.com/WebMCP-org)
-- [OpenClaw](https://github.com/openclaw/openclaw)
+- [W3C WebMCP Spec](https://github.com/nicholasgriffintn/webmcp)
 - [Chrome Canary](https://www.google.com/chrome/canary/)
+
+## Contributing
+
+Contributions are welcome! If you've found a WebMCP-enabled site or have improvements to the skill:
+
+1. Fork the repo
+2. Create your feature branch (`git checkout -b feat/my-improvement`)
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
 
 ## License
 
-MIT
+[MIT](LICENSE)

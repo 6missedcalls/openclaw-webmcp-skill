@@ -19,10 +19,10 @@ browser action=act profile=chrome request={
 ```
 
 ### 2. Discover Tools on a Page
-The page registers tools via `registerTool()` or `provideContext()`. Since we're evaluating in the page context, we can access the internal registry if the site exposes it. For our sites (Proforge), tools are stored in a module-level Map:
+The page registers tools via `registerTool()` or `provideContext()`. Since we're evaluating in the page context, we can access the internal registry if the site exposes it on `window.__WEBMCP_TOOLS__`:
 
 ```
-browser action=navigate targetUrl="https://getproforge.com" profile=chrome
+browser action=navigate targetUrl="https://example-app.com" profile=chrome
 browser action=act profile=chrome request={
   "kind": "evaluate",
   "fn": "() => { if (!navigator.modelContext) return {error: 'WebMCP not available - enable flag in chrome://flags'}; /* Probe what methods exist */ const mc = navigator.modelContext; const info = {type: typeof mc}; for (const k of Object.getOwnPropertyNames(Object.getPrototypeOf(mc))) { info[k] = typeof mc[k]; } return info; }"
@@ -30,7 +30,7 @@ browser action=act profile=chrome request={
 ```
 
 ### 3. Invoke a Tool via Page's Registry
-For sites where we control the code (Proforge, OpFlow), import the tool directly:
+For sites where you control the code, you can access the tool registry directly:
 
 ```
 browser action=act profile=chrome request={
@@ -58,7 +58,7 @@ browser action=act profile=chrome request={
 ## Known WebMCP Sites
 | Site | Tools | Notes |
 |------|-------|-------|
-| getproforge.com | request_demo, get_pricing, check_compliance, calculate_roi | Our site |
+| *(add your own)* | — | Sites you've verified expose `window.__WEBMCP_TOOLS__` |
 
 ## Notes
 - WebMCP tools run in the page's JS context — they have access to the page's auth, state, and data
